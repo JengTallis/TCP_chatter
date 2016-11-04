@@ -21,7 +21,7 @@ char* names[MAX_CLIENTS + 10];
 void *clientHandler(void* clientID);
 char* parseStr(char* name, char* buffer);
 void broadcast(char* outbuff);
-void sendTo(char* outbuff, char* name, int sender);
+int sendTo(char* outbuff, char* name, int sender);
 
 int main(int argc, char const *argv[])
 {
@@ -69,6 +69,9 @@ void *clientHandler(void* clientID)
    	   memset(inbuff, 0, sizeof(inbuff));
    	   memset(outbuff, 0, sizeof(outbuff));
 	   read(clientSoc, inbuff, STR_LENGTH);
+	   if(strlen(inbuff) == 0){
+	   	continue;
+	   }
 	   if(named[clientSoc] == 0){
 	   		printf("new client %d: %s \n", clientSoc, inbuff);
 	   		char nameBuffer[STR_LENGTH];
@@ -76,20 +79,30 @@ void *clientHandler(void* clientID)
 	   		names[clientSoc] = nameBuffer;
 			named[clientSoc] = 1;
 			printf("client %d is %s\n", clientSoc, names[clientSoc]);
-			strcpy(outbuff, "Hello ");
+			strcpy(outbuff, "Welcome ");
 			strcat(outbuff, nameBuffer);
-			write(clientSoc, outbuff, STR_LENGTH);
+			int i;
+			for(i = 0; i < MAX_CLIENTS + 10; i++){
+				if(active[i] > 0){
+					write(i, outbuff, STR_LENGTH);
+				}
+			}
+			//write(clientSoc, outbuff, STR_LENGTH);
 	   }else{
 	   		printf("read from client %d %s: %s \n", clientSoc, names[clientSoc], inbuff);
+	   		char* with_space = strstr(inbuff, " ");
 		   	if(strncmp(inbuff, exitCommand, 4) == 0){
 		   		write(clientSoc, inbuff, STR_LENGTH);
-		   		printf("reply to client %d %s: %s\n", clientSoc, names[clientSoc], inbuff);
-		   		printf("closing client %d %s\n", clientSoc, names[clientSoc]);
+		   		printf("closing client %d %s on exit requrest\n", clientSoc, names[clientSoc]);
 		   		printf("\n");
 		   		named[clientSoc] = 0;
 		   		active[clientSoc] = 0;
 		   		close(clientSoc);
-		   }else{
+		  		strcpy(outbuff, "Exit of ");
+				strcat(outbuff, names[clientSoc]);
+				// TOFIX
+		   		//broadcast(outbuff);
+		   	}else{
 		   		char msgbuff[STR_LENGTH];
 		   		// Broadcast msg
 		   		if(strncmp(inbuff, broadcastCommand, 9) == 0)
@@ -100,6 +113,20 @@ void *clientHandler(void* clientID)
 					strcat(outbuff, " : ");
 					strcat(outbuff, msgbuff);
 		   			broadcast(outbuff);
+		   		}else if(strncmp(inbuff, listCommand, 4) == 0)
+		   		{
+					strcpy(outbuff, "Client list: \n");
+					int i;
+					for(i = 0; i < MAX_CLIENTS + 10; i++){
+						if(named[i] > 0){
+							strcat(outbuff, names[i]);
+							strcat(outbuff, " \n");
+						}
+					}
+					write(clientSoc, outbuff, STR_LENGTH);	
+		   		}
+		   		else if(with_space == NULL){
+		   			continue;
 		   		}
 		   		// Send to specific client
 		   		else
@@ -115,11 +142,14 @@ void *clientHandler(void* clientID)
 					strcat(outbuff, names[clientSoc]);
 					strcat(outbuff, " : ");
 					strcat(outbuff, msgbuff);
-		   			sendTo(outbuff, recName, clientSoc);
+					int send = sendTo(outbuff, recName, clientSoc);
+					if(send < 0){
+						continue;
+					}
 		   		}
 		   		// write(clientSoc, inbuff, STR_LENGTH);
 		   		// printf("reply to client %d %s:", clientSoc, names[clientSoc]);
-		   		printf("\n");
+		   		// printf("\n");
 		   }
 	   }  
    } 
@@ -130,24 +160,24 @@ void broadcast(char* outbuff){
 	int i;
 	for(i = 0; i < MAX_CLIENTS + 10; i++){
 		if(active[i] > 0){
-			write(i, outbuff, 2 * STR_LENGTH);
+			write(i, outbuff, STR_LENGTH);
 		}
 	}
 	return;
 }
 
-void sendTo(char* outbuff, char* name, int sender){
+int sendTo(char* outbuff, char* name, int sender){
 	int i;
-	char strbuff[2 * STR_LENGTH];
+	char strbuff[STR_LENGTH];
 	for(i = 0; i < MAX_CLIENTS + 10; i++){
 		if((named[i] > 0) && (strcmp(name, names[i]) == 0)){
-			write(i, outbuff, 2 * STR_LENGTH);
+			write(i, outbuff, STR_LENGTH);
 			strcpy(strbuff, "Message sent.");
 			write(sender, strbuff, STR_LENGTH);
-			return;
+			return 1;
 		}
 	}
 	strcpy(strbuff, "Invalid command!");
 	write(sender, strbuff, STR_LENGTH);
-	return;
+	return 0;
 }
